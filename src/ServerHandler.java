@@ -1,3 +1,5 @@
+import java.io.FileInputStream;
+import java.io.ObjectInputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -6,14 +8,30 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 
 public class ServerHandler extends Thread {
-    private Socket clientSocket;
-    private PrivateKey privateKey;
-    private PublicKey publicKey;
+    private Socket clientSocket = null;
+    private int id;
+    private static PrivateKey privateKey;
+    private static PublicKey publicKey;
 
-    public ServerHandler(Socket clientSocket, PrivateKey privateKey, PublicKey publicKey) {
-        this.clientSocket = clientSocket;
-        this.privateKey = privateKey;
-        this.publicKey = publicKey;
+    public ServerHandler(Socket pSocket, int pId) {
+        this.clientSocket = pSocket;
+        this.id = pId;
+        loadKeys();
+    }
+
+    private void loadKeys() {
+        try (ObjectInputStream privateKeyIn = new ObjectInputStream(new FileInputStream("privateKey.ser"));
+             ObjectInputStream publicKeyIn = new ObjectInputStream(new FileInputStream("publicKey.ser"))) {
+            privateKey = (PrivateKey) privateKeyIn.readObject();
+            publicKey = (PublicKey) publicKeyIn.readObject();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void setKeys(PrivateKey pPrivate, PublicKey pPublic) {
+        privateKey = pPrivate;
+        publicKey = pPublic;
     }
 
     @Override
@@ -22,7 +40,7 @@ public class ServerHandler extends Thread {
             PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true);
             BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 
-            ServerProtocol.process(writer, reader, privateKey, publicKey);
+            ServerProtocol.process(id, writer, reader, privateKey, publicKey);
 
             reader.close();
             writer.close();

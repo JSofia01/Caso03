@@ -1,46 +1,38 @@
+import java.io.FileInputStream;
+import java.io.ObjectInputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.Base64;
-import javax.crypto.Cipher;
-import javax.crypto.Mac;
-import javax.crypto.spec.IvParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
+import java.security.PublicKey;
 
-public class Client {
-    private static final String SERVER_ADDRESS = "localhost";
-    private static final int PORT = 3400;
+public class Client extends Thread {
+    public static final int PUERTO = 3400;
+    public static final String SERVIDOR = "localhost";
+    public static PublicKey publicKey;
+    private int id;
 
-    public static void main(String[] args) {
-        try (Socket socket = new Socket(SERVER_ADDRESS, PORT);
-             PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+    public Client(int pId) {
+        id = pId;
+        loadPublicKey();
+    }
 
-            String clientId = "cliente1";
-            String packageId = "paquete1";
-            String consult = clientId + "-" + packageId;
+    private void loadPublicKey() {
+        try (ObjectInputStream publicKeyIn = new ObjectInputStream(new FileInputStream("publicKey.ser"))) {
+            publicKey = (PublicKey) publicKeyIn.readObject();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
-            byte[] iv = new byte[16];
-            byte[] K_AB1 = new byte[16];
-            byte[] K_AB2 = new byte[16];
-            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-            IvParameterSpec ivSpec = new IvParameterSpec(iv);
-            SecretKeySpec keySpec = new SecretKeySpec(K_AB1, "AES");
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
-            byte[] encryptedConsult = cipher.doFinal(consult.getBytes());
-            out.println(Base64.getEncoder().encodeToString(encryptedConsult));
+    @Override
+    public void run() {
+        try (Socket socket = new Socket(SERVIDOR, PUERTO);
+             PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+             BufferedReader stdIn = new BufferedReader(new InputStreamReader(System.in))) {
 
-            Mac mac = Mac.getInstance("HmacSHA384");
-            mac.init(new SecretKeySpec(K_AB2, "HmacSHA384"));
-            byte[] hmac = mac.doFinal(consult.getBytes());
-            out.println(Base64.getEncoder().encodeToString(hmac));
-
-            String encryptedResponse = in.readLine();
-            byte[] decryptedResponse = cipher.doFinal(Base64.getDecoder().decode(encryptedResponse));
-            String estado = new String(decryptedResponse);
-
-            System.out.println("Estado del paquete: " + estado);
+            ClientProtocol.process(id, stdIn, reader, writer, publicKey);
 
         } catch (Exception e) {
             e.printStackTrace();
