@@ -3,8 +3,11 @@ import java.io.ObjectInputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.math.BigInteger;
 import java.net.Socket;
 import java.security.PublicKey;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
 
 public class Client extends Thread {
     public static final int PUERTO = 3400;
@@ -32,7 +35,21 @@ public class Client extends Thread {
              BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
              BufferedReader stdIn = new BufferedReader(new InputStreamReader(System.in))) {
 
-            ClientProtocol.process(id, stdIn, reader, writer, publicKey);
+            // Proceso de intercambio de claves Diffie-Hellman
+            DiffieHellman dh = new DiffieHellman();
+            BigInteger clientDH = dh.calcularmodp(BigInteger.valueOf(id));
+            writer.println(clientDH.toString());
+
+            // Recibir clave del servidor
+            BigInteger serverDH = new BigInteger(reader.readLine());
+            BigInteger sharedSecret = dh.calcularz(serverDH, BigInteger.valueOf(id));
+
+            // Generar claves AES y HMAC
+            byte[] sharedSecretHash = ServerProtocol.hashSHA512(sharedSecret.toByteArray());
+            SecretKey aesKey = new SecretKeySpec(sharedSecretHash, 0, 16, "AES");
+            SecretKey hmacKey = new SecretKeySpec(sharedSecretHash, 16, 16, "HmacSHA384");
+
+            ClientProtocol.process(id, stdIn, reader, writer, aesKey, hmacKey);
 
         } catch (Exception e) {
             e.printStackTrace();
