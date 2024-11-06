@@ -6,12 +6,14 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 
 public class ServerHandler extends Thread {
-    private Socket clientSocket = null;
-    private int id;
+    private Socket clientSocket;
+    private PrivateKey privateKey;
+    private PublicKey publicKey;
 
-    public ServerHandler(Socket pSocket, int pId) {
-        this.clientSocket = pSocket;
-        this.id = pId;
+    public ServerHandler(Socket clientSocket, PrivateKey privateKey, PublicKey publicKey) {
+        this.clientSocket = clientSocket;
+        this.privateKey = privateKey;
+        this.publicKey = publicKey;
     }
 
     @Override
@@ -20,10 +22,7 @@ public class ServerHandler extends Thread {
             PrintWriter writer = new PrintWriter(clientSocket.getOutputStream(), true);
             BufferedReader reader = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 
-            PrivateKey privateKey = Server.getPrivateKey();
-            PublicKey publicKey = Server.getPublicKey();
-
-            ServerProtocol.process(id, writer, reader, privateKey, publicKey);
+            ServerProtocol.process(writer, reader, privateKey, publicKey);
 
             reader.close();
             writer.close();

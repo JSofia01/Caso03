@@ -1,132 +1,99 @@
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.math.BigInteger;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.Scanner;
 
 public class Server extends Thread {
     public static final int PORT = 3400;
+
     private static PrivateKey privateKey;
-    private static PublicKey publicKey;
-    private ServerSocket serverSocket = null;
-    private int maxThreads;
-    private int threadsNumber = 0;
+    public static PublicKey publicKey;
+    private static HashMap<String, PackageData> packageTable = new HashMap<>();
 
-    // Estructura para almacenar los estados de los paquetes
-    private static final Map<String, Integer> packageStatusMap = new HashMap<>();
-
-    public Server(int maxThreads) throws IOException {
-        this.maxThreads = maxThreads;
-        System.out.println("Inicio del servidor principal");
-
-        try {
-            serverSocket = new ServerSocket(PORT);
-        } catch (IOException e) {
-            e.printStackTrace();
-            System.exit(-1);
-        }
-
-        // Inicializar algunos paquetes para pruebas
-        initializePackages();
+    static {
+        // Inicializar la tabla de paquetes con datos predefinidos
+        packageTable.put("cliente1-paquete1", new PackageData("cliente1", "paquete1", PackageStatus.ENOFICINA));
+        packageTable.put("cliente2-paquete2", new PackageData("cliente2", "paquete2", PackageStatus.RECOGIDO));
     }
 
-    // Inicializar algunos paquetes con datos de prueba
-    private void initializePackages() {
-        packageStatusMap.put("user1-package1", PackageStatus.ENOFICINA);
-        packageStatusMap.put("user1-package2", PackageStatus.RECOGIDO);
-        // Agrega más datos de prueba si es necesario
-    }
-
-    // Método para obtener el estado de un paquete basado en userId y packageId
-    public static int getPackageStatus(String userId, String packageId) {
-        String key = userId + "-" + packageId;
-        return packageStatusMap.getOrDefault(key, PackageStatus.DESCONOCIDO);
-    }
-
-    // Método para acceder a la clave privada
-    public static PrivateKey getPrivateKey() {
-        return privateKey;
-    }
-
-    // Método para acceder a la clave pública
-    public static PublicKey getPublicKey() {
-        return publicKey;
-    }
-
-    // Método para cargar llaves desde archivos
-    private void loadKeys() {
-        try {
-            privateKey = KeyLoaderUtil.loadPrivateKey("privateKey.txt");
-            publicKey = KeyLoaderUtil.loadPublicKey("publicKey.txt");
-            System.out.println("Llaves cargadas desde archivos .txt.");
+    public Server() throws IOException {
+        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
+            System.out.println("Servidor iniciado en el puerto: " + PORT);
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                new ServerHandler(clientSocket, privateKey, publicKey).start();
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    // Método para mostrar el menú y ejecutar las opciones seleccionadas
-    private void showMenu() {
+    public static PackageData getPackageStatus(String clientId, String packageId) {
+        String key = clientId + "-" + packageId;
+        return packageTable.getOrDefault(key, new PackageData(clientId, packageId, PackageStatus.DESCONOCIDO));
+    }
+
+    public static void main(String[] args) throws IOException {
         Scanner scanner = new Scanner(System.in);
-        boolean exit = false;
+        System.out.println("Seleccione una opción:");
+        System.out.println("1. Generar y guardar claves RSA");
+        System.out.println("2. Iniciar servidor");
 
-        while (!exit) {
-            System.out.println("\nSeleccione una opción:");
-            System.out.println("1. Generar pareja de llaves RSA y guardarlas en archivos");
-            System.out.println("2. Cargar llaves desde archivos y aceptar conexiones de clientes");
-            System.out.println("3. Salir");
-
-            int option = scanner.nextInt();
-
-            switch (option) {
-                case 1:
-                    try {
-                        KeyGeneratorUtil.generateAndSaveKeys();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                    break;
-                case 2:
-                    loadKeys();
-                    startServer();
-                    break;
-                case 3:
-                    System.out.println("Saliendo del servidor...");
-                    exit = true;
-                    break;
-                default:
-                    System.out.println("Opción no válida. Intente de nuevo.");
-                    break;
-            }
+        int opcion = scanner.nextInt();
+        
+        if (opcion == 1) {
+            generarYGuardarClavesRSA();
+        } else if (opcion == 2) {
+            new Server().start();
+        } else {
+            System.out.println("Opción no válida.");
         }
-
         scanner.close();
     }
 
-    // Método para iniciar el servidor y manejar las conexiones de clientes
-    private void startServer() {
-        if (privateKey == null || publicKey == null) {
-            System.out.println("Por favor, cargue las llaves antes de iniciar el servidor.");
-            return;
-        }
+    static void generarYGuardarClavesRSA() {
+        try {
+            KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+            keyPairGenerator.initialize(1024);
+            KeyPair keyPair = keyPairGenerator.generateKeyPair();
+            privateKey = keyPair.getPrivate();
+            publicKey = keyPair.getPublic();
 
-        System.out.println("Servidor escuchando en el puerto " + PORT);
-        while (threadsNumber < maxThreads) {
-            try {
-                Socket socket = serverSocket.accept();
-                ServerHandler serverHandler = new ServerHandler(socket, threadsNumber);
-                threadsNumber++;
-                serverHandler.start();
-            } catch (IOException e) {
-                e.printStackTrace();
+            // Guardar clave privada en un archivo
+            try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream("privateKey.ser"))) {
+                out.writeObject(privateKey);
             }
+            System.out.println("Clave privada guardada en 'privateKey.ser'");
+
+            // Guardar clave pública en un archivo
+            try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream("publicKey.ser"))) {
+                out.writeObject(publicKey);
+            }
+            System.out.println("Clave pública guardada en 'publicKey.ser'");
+            
+            System.out.println("Pares de llaves RSA generados y guardados en archivos.");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
-    @Override
-    public void run() {
-        showMenu();
+    public static class PackageData {
+        String clientId;
+        String packageId;
+        int status;
+
+        public PackageData(String clientId, String packageId, int status) {
+            this.clientId = clientId;
+            this.packageId = packageId;
+            this.status = status;
+        }
     }
 }
